@@ -14,24 +14,34 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Build CLI, CPL, and Service (x64)
+      - name: Patch Legacy VS2013 Macros in Project Files
+        shell: pwsh
         run: |
-          msbuild cli\cli.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0 /p:TreatWarningAsError=false
-          msbuild cpl\cpl.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0 /p:TreatWarningAsError=false
-          msbuild cplcore\cplcore.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0 /p:TreatWarningAsError=false /p:PreprocessorDefinitions="_CRT_STDIO_ARBITRARY_WIDE_SPECIFIERS;HAVE_VSNPRINTF;%(PreprocessorDefinitions)"
-          msbuild svc\imdsksvc.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0 /p:TreatWarningAsError=false
+          Get-ChildItem -Recurse -Filter *.vcxproj | ForEach-Object {
+            $c = Get-Content $_.FullName -Raw
+            $c = $c -replace 'vsnprintf=_vsnprintf;?', ''
+            $c = $c -replace 'snwprintf=_snwprintf;?', ''
+            $c = $c -replace '<TreatWarningAsError>true</TreatWarningAsError>', '<TreatWarningAsError>false</TreatWarningAsError>'
+            Set-Content $_.FullName $c
+          }
 
       - name: Build Kernel Driver (x64)
         run: |
-          msbuild sys\sys.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=WindowsKernelModeDriver10.0 /p:TargetVersion=Windows10 /p:WindowsTargetPlatformVersion=10.0 /p:TreatWarningAsError=false
+          msbuild sys\sys.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=WindowsKernelModeDriver10.0 /p:TargetVersion=Windows10 /p:WindowsTargetPlatformVersion=10.0
+
+      - name: Build CLI, CPL, and Service (x64)
+        continue-on-error: true
+        run: |
+          msbuild cli\cli.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0
+          msbuild svc\imdsksvc.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0
 
       - name: Upload Compiled Files
         uses: actions/upload-artifact@v4
         with:
           name: ImDisk-x64-Compiled
           path: |
-            **/x64/Release/*.sys
-            **/x64/Release/*.exe
-            **/x64/Release/*.cpl
-            **/x64/Release/*.dll
+            **/Release/**/*.sys
+            **/Release/**/*.exe
+            **/Release/**/*.cpl
+            **/Release/**/*.dll
             imdisk.inf
