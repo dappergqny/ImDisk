@@ -1,0 +1,37 @@
+name: Build ImDisk Driver
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build CLI, CPL, and Service (x64)
+        run: |
+          msbuild cli\cli.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0
+          msbuild cpl\cpl.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0
+          msbuild cplcore\cplcore.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0
+          msbuild svc\svc.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0
+
+      - name: Build Kernel Driver (x64)
+        run: |
+          msbuild sys\sys.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=WindowsKernelModeDriver10.0 /p:TargetVersion=Windows10 /p:WindowsTargetPlatformVersion=10.0
+
+      - name: Upload Compiled Files
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImDisk-x64-Compiled
+          path: |
+            **/x64/Release/*.sys
+            **/x64/Release/*.exe
+            **/x64/Release/*.cpl
+            **/x64/Release/*.dll
+            imdisk.inf
