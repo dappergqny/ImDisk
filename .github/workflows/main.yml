@@ -14,7 +14,7 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Patch Legacy VS2013 Macros in Project Files
+      - name: Patch Legacy Macros in Project Files
         shell: pwsh
         run: |
           Get-ChildItem -Recurse -Filter *.vcxproj | ForEach-Object {
@@ -26,8 +26,13 @@ jobs:
           }
 
       - name: Build Kernel Driver (x64)
+        shell: pwsh
         run: |
-          msbuild sys\sys.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=WindowsKernelModeDriver10.0 /p:TargetVersion=Windows10 /p:WindowsTargetPlatformVersion=10.0
+          [xml]$proj = Get-Content sys\sys.vcxproj
+          $configs = $proj.Project.ItemGroup | Where-Object { $_.Label -eq 'ProjectConfigurations' } | ForEach-Object { $_.ProjectConfiguration } | Where-Object { $_.Platform -eq 'x64' -and $_.Configuration -like '*Release*' }
+          $cfg = $configs[0].Configuration
+          Write-Host "Detected Driver Configuration: $cfg"
+          msbuild sys\sys.vcxproj /p:Configuration="$cfg" /p:Platform=x64 /p:PlatformToolset=WindowsKernelModeDriver10.0 /p:TargetVersion=Windows10 /p:WindowsTargetPlatformVersion=10.0
 
       - name: Build CLI, CPL, and Service (x64)
         continue-on-error: true
@@ -40,6 +45,7 @@ jobs:
         with:
           name: ImDisk-x64-Compiled
           path: |
+            **/x64/**/*.sys
             **/Release/**/*.sys
             **/Release/**/*.exe
             **/Release/**/*.cpl
