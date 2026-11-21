@@ -11,48 +11,28 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
-
-      - name: Setup Windows Driver Kit (WDK)
-        uses: WindowsDriverKit/setup-wdk@v1
+      - name: Setup MSVC x64 Environment
+        uses: ilammy/msvc-dev-cmd@v1
         with:
-          wdk-version: '10.0.22621.2428'
+          arch: x64
 
-      - name: Patch Legacy Macros in Project Files
+      - name: Install Windows Driver Kit (WDK)
         shell: pwsh
         run: |
-          Get-ChildItem -Recurse -Filter *.vcxproj | ForEach-Object {
-            $c = Get-Content $_.FullName -Raw
-            $c = $c -replace 'vsnprintf=_vsnprintf;?', ''
-            $c = $c -replace 'snwprintf=_snwprintf;?', ''
-            $c = $c -replace '<TreatWarningAsError>true</TreatWarningAsError>', '<TreatWarningAsError>false</TreatWarningAsError>'
-            Set-Content $_.FullName $c
-          }
+          winget install --id Microsoft.WindowsWDK.10.0.26100 -e --silent --accept-package-agreements --accept-source-agreements
 
-      - name: Build Kernel Driver (x64)
-        shell: pwsh
+      - name: Direct Compile imdisk.sys (x64)
+        shell: cmd
         run: |
-          [xml]$proj = Get-Content sys\sys.vcxproj
-          $configs = @($proj.Project.ItemGroup | Where-Object { $_.Label -eq 'ProjectConfigurations' } | ForEach-Object { $_.ProjectConfiguration } | Where-Object { $_.Platform -eq 'x64' -and $_.Configuration -like '*Release*' })
-          $cfg = $configs[0].Configuration
-          Write-Host "Building Configuration: $cfg"
-          msbuild sys\sys.vcxproj /p:Configuration="$cfg" /p:Platform=x64 /p:PlatformToolset=WindowsKernelModeDriver10.0 /p:TargetVersion=Windows10 /p:WindowsTargetPlatformVersion=10.0.22621.0
+          mkdir out_x64
+          rc.exe /I "C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\km" /I "C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\shared" /I "inc" /fo out_x64\imdisk.res sys\imdisk.rc
+          cl.exe /nologo /c /O2 /Oi /Ot /GS- /W3 /Gz /kernel /D _AMD64_ /D AMD64 /D _WIN64 /D NDEBUG /D POOL_NX_OPTIN=1 /I "C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\km" /I "C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\km\crt" /I "C:\Program Files (x86)\Windows Kits\10\Include\10.0.26100.0\shared" /I "inc" /Fo"out_x64\\" sys\*.cpp
+          link.exe /nologo /DRIVER /SUBSYSTEM:NATIVE /ENTRY:DriverEntry /NODEFAULTLIB /MERGE:.rdata=.text /OPT:REF /OPT:ICF /OUT:out_x64\imdisk.sys /LIBPATH:"C:\Program Files (x86)\Windows Kits\10\Lib\10.0.26100.0\km\x64" out_x64\*.obj out_x64\imdisk.res ntoskrnl.lib hal.lib wdmsec.lib libcntpr.lib BufferOverflowK.lib
 
-      - name: Build CLI, CPL, and Service (x64)
-        continue-on-error: true
-        run: |
-          msbuild cli\cli.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0.22621.0
-          msbuild svc\imdsksvc.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0.22621.0
-
-      - name: Upload Compiled Files
+      - name: Upload Compiled Driver
         uses: actions/upload-artifact@v4
         with:
           name: ImDisk-x64-Compiled
           path: |
-            **/x64/**/*.sys
-            **/Release/**/*.sys
-            **/Release/**/*.exe
-            **/Release/**/*.cpl
-            **/Release/**/*.dll
+            out_x64/imdisk.sys
             imdisk.inf
