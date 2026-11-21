@@ -14,10 +14,10 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Install Windows Driver Kit (WDK)
-        shell: pwsh
-        run: |
-          winget install --id Microsoft.WindowsWDK.10.0.26100 -e --silent --accept-package-agreements --accept-source-agreements
+      - name: Setup Windows Driver Kit (WDK)
+        uses: WindowsDriverKit/setup-wdk@v1
+        with:
+          wdk-version: '10.0.22621.2428'
 
       - name: Patch Legacy Macros in Project Files
         shell: pwsh
@@ -34,16 +34,16 @@ jobs:
         shell: pwsh
         run: |
           [xml]$proj = Get-Content sys\sys.vcxproj
-          $configs = $proj.Project.ItemGroup | Where-Object { $_.Label -eq 'ProjectConfigurations' } | ForEach-Object { $_.ProjectConfiguration } | Where-Object { $_.Platform -eq 'x64' -and $_.Configuration -like '*Release*' }
-          $cfg = $configs.Configuration
-          Write-Host "Detected Driver Configuration: $cfg"
-          msbuild sys\sys.vcxproj /p:Configuration="$cfg" /p:Platform=x64 /p:PlatformToolset=WindowsKernelModeDriver10.0 /p:TargetVersion=Windows10 /p:WindowsTargetPlatformVersion=10.0.26100.0
+          $configs = @($proj.Project.ItemGroup | Where-Object { $_.Label -eq 'ProjectConfigurations' } | ForEach-Object { $_.ProjectConfiguration } | Where-Object { $_.Platform -eq 'x64' -and $_.Configuration -like '*Release*' })
+          $cfg = $configs[0].Configuration
+          Write-Host "Building Configuration: $cfg"
+          msbuild sys\sys.vcxproj /p:Configuration="$cfg" /p:Platform=x64 /p:PlatformToolset=WindowsKernelModeDriver10.0 /p:TargetVersion=Windows10 /p:WindowsTargetPlatformVersion=10.0.22621.0
 
       - name: Build CLI, CPL, and Service (x64)
         continue-on-error: true
         run: |
-          msbuild cli\cli.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0.26100.0
-          msbuild svc\imdsksvc.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0.26100.0
+          msbuild cli\cli.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0.22621.0
+          msbuild svc\imdsksvc.vcxproj /p:Configuration=Release /p:Platform=x64 /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0.22621.0
 
       - name: Upload Compiled Files
         uses: actions/upload-artifact@v4
